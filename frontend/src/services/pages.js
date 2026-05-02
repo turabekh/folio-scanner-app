@@ -38,3 +38,18 @@ export async function enhancePage(documentId, pageId, filter) {
   )
   return data
 }
+
+export async function runServerOcr(documentId, pageId) {
+  const { data } = await api.post(
+    `/documents/${documentId}/pages/${pageId}/ocr`,
+  )
+  return data
+}
+
+export async function setPageOcrText(documentId, pageId, text) {
+  const { data } = await api.put(
+    `/documents/${documentId}/pages/${pageId}/ocr`,
+    { text },
+  )
+  return data
+}

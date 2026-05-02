@@ -6,6 +6,9 @@ from PIL import Image
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.schemas.page import PageEnhanceRequest, PageOcrTextRequest, PageResponse
+from app.services.ocr import extract_text
+
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.models import Document, Page, User
@@ -304,4 +307,56 @@ async def enhance_page(
         except Exception:
             pass
 
+    return page
+
+
+@router.post(
+    "/{document_id}/pages/{page_id}/ocr",
+    response_model=PageResponse,
+)
+async def run_server_ocr(
+    document_id: uuid.UUID,
+    page_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    page = await _get_owned_page(document_id, page_id, current_user, db)
+
+    source_key = page.enhanced_storage_key or page.original_storage_key
+    if source_key is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Page has no image",
+        )
+
+    image_bytes, _ = await download_bytes(source_key)
+    try:
+        text = extract_text(image_bytes)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="OCR extraction failed",
+        )
+
+    page.ocr_text = text
+    await db.commit()
+    await db.refresh(page)
+    return page
+
+
+@router.put(
+    "/{document_id}/pages/{page_id}/ocr",
+    response_model=PageResponse,
+)
+async def set_page_ocr_text(
+    document_id: uuid.UUID,
+    page_id: uuid.UUID,
+    payload: PageOcrTextRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    page = await _get_owned_page(document_id, page_id, current_user, db)
+    page.ocr_text = payload.text
+    await db.commit()
+    await db.refresh(page)
     return page

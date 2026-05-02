@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 FilterName = Literal["original", "magic", "bw", "gray"]
@@ -18,6 +18,7 @@ class PageResponse(BaseModel):
     enhanced_storage_key: str | None
     thumbnail_storage_key: str | None
     filter_applied: str | None
+    ocr_text: str | None
     width: int | None
     height: int | None
     created_at: datetime
@@ -25,3 +26,7 @@ class PageResponse(BaseModel):
 
 class PageEnhanceRequest(BaseModel):
     filter: FilterName
+
+
+class PageOcrTextRequest(BaseModel):
+    text: str = Field(max_length=200000)
