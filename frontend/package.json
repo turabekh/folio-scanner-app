@@ -24,6 +24,7 @@
     "@quasar/extras": "^1.16.4",
     "axios": "^1.15.2",
     "capacitor-native-settings": "^8.1.0",
+    "panzoom": "^9.4.4",
     "pinia": "^3.0.1",
     "quasar": "^2.16.0",
     "vue": "^3.5.22",

@@ -1,6 +1,6 @@
 <template>
   <q-card flat bordered class="page-thumbnail">
-    <div class="thumbnail-wrap">
+    <div class="thumbnail-wrap" @click="$emit('preview', page)">
       <q-spinner-dots
         v-if="image.loading.value && !image.url.value"
         class="absolute-center"
@@ -134,7 +134,7 @@ const props = defineProps({
   page: { type: Object, required: true },
 })
 
-const emit = defineEmits(['delete', 'updated'])
+const emit = defineEmits(['delete', 'updated', 'preview'])
 
 const $q = useQuasar()
 const image = usePageImage(props.documentId, toRef(props, 'page'))
@@ -214,6 +214,12 @@ async function onCopyText() {
   aspect-ratio: 1 / 1.4;
   background: #f4f4f4;
   overflow: hidden;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.thumbnail-wrap:hover {
+  opacity: 0.85;
 }
 
 .thumbnail-img {

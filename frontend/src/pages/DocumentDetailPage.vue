@@ -62,22 +62,32 @@
           :page="page"
           @delete="onDeletePage"
           @updated="onPageUpdated"
+          @preview="onPreviewPage"
         />
       </div>
+
+      <PagePreviewDialog
+        v-if="document"
+        v-model="previewOpen"
+        :document-id="document.id"
+        :pages="pages"
+        :start-index="previewIndex"
+      />
     </template>
   </q-page>
 </template>
 
 <script setup>
-import { Capacitor } from '@capacitor/core'
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
+import { Capacitor } from '@capacitor/core'
 
 import * as documentsService from 'src/services/documents'
 import * as pagesService from 'src/services/pages'
 import { captureDocument, isNativePlatform } from 'src/composables/useScanner'
 import PageThumbnail from 'src/components/PageThumbnail.vue'
+import PagePreviewDialog from 'src/components/PagePreviewDialog.vue'
 
 const $q = useQuasar()
 const route = useRoute()
@@ -90,6 +100,9 @@ const loading = ref(true)
 const error = ref(null)
 const uploading = ref(false)
 const generatingPdf = ref(false)
+
+const previewOpen = ref(false)
+const previewIndex = ref(0)
 
 const isNative = isNativePlatform()
 
@@ -119,13 +132,10 @@ async function loadDocument() {
 }
 
 async function onCaptureClick() {
-  console.log('[detail] onCaptureClick start')
   let files = []
   try {
     files = await captureDocument()
-    console.log('[detail] captureDocument returned', files.length, 'files')
   } catch (err) {
-    console.error('[detail] captureDocument threw:', err)
     $q.notify({
       type: 'negative',
       message: err?.message || 'Failed to capture',
@@ -134,17 +144,12 @@ async function onCaptureClick() {
     return
   }
 
-  if (files.length === 0) {
-    console.log('[detail] no files, returning early')
-    return
-  }
+  if (files.length === 0) return
 
   uploading.value = true
   try {
     for (const file of files) {
-      console.log('[detail] uploading', file.name, 'size', file.size)
       const newPage = await pagesService.uploadPage(documentId, file)
-      console.log('[detail] uploaded, page id:', newPage.id)
       pages.value = [...pages.value, newPage]
     }
     if (document.value) {
@@ -156,7 +161,6 @@ async function onCaptureClick() {
       position: 'top',
     })
   } catch (err) {
-    console.error('[detail] upload failed:', err)
     $q.notify({
       type: 'negative',
       message: err.response?.data?.detail || 'Failed to upload page',
@@ -194,6 +198,14 @@ async function onDeletePage(page) {
 
 function onPageUpdated(updated) {
   pages.value = pages.value.map((p) => (p.id === updated.id ? updated : p))
+}
+
+function onPreviewPage(page) {
+  const idx = pages.value.findIndex((p) => p.id === page.id)
+  if (idx >= 0) {
+    previewIndex.value = idx
+    previewOpen.value = true
+  }
 }
 
 async function onDownloadPdf() {
@@ -269,5 +281,4 @@ function blobToBase64(blob) {
     reader.readAsDataURL(blob)
   })
 }
-
 </script>
