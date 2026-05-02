@@ -1,0 +1,12 @@
+{
+  "name": "frontend",
+  "version": "0.0.1",
+  "description": "Document scanner mobile app",
+  "author": "Turaboy Holmirzaev <turabekh@gmail.com>",
+  "private": true,
+  "dependencies": {
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.0.0"
+  }
+}

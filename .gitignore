@@ -21,6 +21,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+frontend/src-capacitor/ios/
+frontend/src-capacitor/android/
+frontend/src-capacitor/node_modules/
+
 .DS_Store
 .idea/
 .vscode/

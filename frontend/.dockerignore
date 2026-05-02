@@ -1,0 +1,10 @@
+node_modules
+dist
+.quasar
+src-capacitor/node_modules
+src-capacitor/ios
+src-capacitor/android
+.git
+.env
+.env.*
+*.log
