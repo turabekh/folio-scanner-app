@@ -26,7 +26,8 @@ services:
     env_file:
       - .env
     volumes:
-      - ./backend/app:/app/app
+          - ./backend:/app
+          - /app/__pycache__
     networks:
       - scanner-net
     depends_on:
