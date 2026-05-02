@@ -27,26 +27,21 @@
         </div>
         <q-space />
         <q-btn
-          label="Add page"
-          icon="add_a_photo"
+          :label="isNative ? 'Scan' : 'Add page'"
+          :icon="isNative ? 'document_scanner' : 'add_a_photo'"
           color="primary"
           unelevated
-          @click="onAddPageClick"
+          @click="onCaptureClick"
           :loading="uploading"
-        />
-        <input
-          ref="fileInput"
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          class="hidden"
-          @change="onFileSelected"
         />
       </div>
 
       <div v-if="pages.length === 0" class="text-center q-mt-xl text-grey-7">
-        <q-icon name="add_a_photo" size="64px" class="q-mb-md" />
+        <q-icon :name="isNative ? 'document_scanner' : 'add_a_photo'" size="64px" class="q-mb-md" />
         <div class="text-h6">No pages yet</div>
-        <div class="text-body2 q-mt-sm">Tap "Add page" to upload a scan.</div>
+        <div class="text-body2 q-mt-sm">
+          {{ isNative ? 'Tap "Scan" to capture a page.' : 'Tap "Add page" to upload a scan.' }}
+        </div>
       </div>
 
       <div v-else class="row q-col-gutter-md">
@@ -69,6 +64,7 @@ import { useQuasar } from 'quasar'
 
 import * as documentsService from 'src/services/documents'
 import * as pagesService from 'src/services/pages'
+import { captureDocument, isNativePlatform } from 'src/composables/useScanner'
 import PageThumbnail from 'src/components/PageThumbnail.vue'
 
 const $q = useQuasar()
@@ -81,7 +77,8 @@ const pages = ref([])
 const loading = ref(true)
 const error = ref(null)
 const uploading = ref(false)
-const fileInput = ref(null)
+
+const isNative = isNativePlatform()
 
 onMounted(async () => {
   await loadDocument()
@@ -108,23 +105,35 @@ async function loadDocument() {
   }
 }
 
-function onAddPageClick() {
-  fileInput.value?.click()
-}
+async function onCaptureClick() {
+  let files = []
+  try {
+    files = await captureDocument()
+  } catch (err) {
+    $q.notify({
+      type: 'negative',
+      message: err?.message || 'Failed to capture',
+      position: 'top',
+    })
+    return
+  }
 
-async function onFileSelected(event) {
-  const file = event.target.files?.[0]
-  event.target.value = ''
-  if (!file) return
+  if (files.length === 0) return
 
   uploading.value = true
   try {
-    const newPage = await pagesService.uploadPage(documentId, file)
-    pages.value = [...pages.value, newPage]
+    for (const file of files) {
+      const newPage = await pagesService.uploadPage(documentId, file)
+      pages.value = [...pages.value, newPage]
+    }
     if (document.value) {
       document.value = { ...document.value, page_count: pages.value.length }
     }
-    $q.notify({ type: 'positive', message: 'Page added', position: 'top' })
+    $q.notify({
+      type: 'positive',
+      message: files.length === 1 ? 'Page added' : `${files.length} pages added`,
+      position: 'top',
+    })
   } catch (err) {
     $q.notify({
       type: 'negative',

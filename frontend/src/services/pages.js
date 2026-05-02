@@ -20,10 +20,21 @@ export async function deletePage(documentId, pageId) {
   await api.delete(`/documents/${documentId}/pages/${pageId}`)
 }
 
-export async function fetchPageImageBlob(documentId, pageId) {
+export async function fetchPageImageBlob(documentId, pageId, variant = 'auto', cacheBuster = '') {
   const response = await api.get(
     `/documents/${documentId}/pages/${pageId}/image`,
-    { responseType: 'blob' },
+    {
+      responseType: 'blob',
+      params: { variant, ...(cacheBuster ? { v: cacheBuster } : {}) },
+    },
   )
   return response.data
+}
+
+export async function enhancePage(documentId, pageId, filter) {
+  const { data } = await api.post(
+    `/documents/${documentId}/pages/${pageId}/enhance`,
+    { filter },
+  )
+  return data
 }

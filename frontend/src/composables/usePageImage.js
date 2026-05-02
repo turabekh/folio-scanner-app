@@ -25,10 +25,12 @@ export function usePageImage(documentId, pageRef) {
       return
     }
 
+    const cacheBuster = page.enhanced_storage_key || page.original_storage_key || ''
+
     loading.value = true
     error.value = null
     try {
-      const blob = await fetchPageImageBlob(documentId, page.id)
+      const blob = await fetchPageImageBlob(documentId, page.id, 'auto', cacheBuster)
       revoke()
       currentObjectUrl = URL.createObjectURL(blob)
       url.value = currentObjectUrl
