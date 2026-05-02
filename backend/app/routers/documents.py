@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, status
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +11,26 @@ from app.schemas.document import DocumentCreateRequest, DocumentResponse
 
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+
+async def _get_owned_document(
+    document_id: uuid.UUID,
+    user: User,
+    db: AsyncSession,
+) -> Document:
+    result = await db.execute(
+        select(Document).where(
+            Document.id == document_id,
+            Document.user_id == user.id,
+        )
+    )
+    document = result.scalar_one_or_none()
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+    return document
 
 
 @router.get("", response_model=list[DocumentResponse])
@@ -42,3 +64,23 @@ async def create_document(
     await db.commit()
     await db.refresh(document)
     return document
+
+
+@router.get("/{document_id}", response_model=DocumentResponse)
+async def get_document(
+    document_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _get_owned_document(document_id, current_user, db)
+
+
+@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document(
+    document_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    document = await _get_owned_document(document_id, current_user, db)
+    await db.delete(document)
+    await db.commit()
