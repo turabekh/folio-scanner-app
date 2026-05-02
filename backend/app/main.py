@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db
 from app.routers import auth, documents
+from app.services.storage import check_bucket
 
 app = FastAPI(title=settings.app_name)
 
@@ -22,6 +23,12 @@ async def health_db(db: AsyncSession = Depends(get_db)):
     result = await db.execute(text("SELECT 1"))
     value = result.scalar()
     return {"status": "ok", "db_responded": value == 1}
+
+
+@app.get("/health/storage")
+async def health_storage():
+    ok = await check_bucket()
+    return {"status": "ok", "bucket_exists": ok}
 
 
 @app.get("/")

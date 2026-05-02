@@ -1,16 +1,24 @@
+import io
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from PIL import Image
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
 from app.database import get_db
-from app.models import Document, User
+from app.models import Document, Page, User
 from app.schemas.document import DocumentCreateRequest, DocumentResponse
+from app.schemas.page import PageResponse
+from app.services.storage import delete_object, page_storage_key, upload_bytes
 
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+
+ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 
 async def _get_owned_document(
@@ -84,3 +92,104 @@ async def delete_document(
     document = await _get_owned_document(document_id, current_user, db)
     await db.delete(document)
     await db.commit()
+
+
+@router.get("/{document_id}/pages", response_model=list[PageResponse])
+async def list_pages(
+    document_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_owned_document(document_id, current_user, db)
+
+    result = await db.execute(
+        select(Page)
+        .where(Page.document_id == document_id)
+        .order_by(Page.page_number)
+    )
+    return list(result.scalars().all())
+
+
+@router.post(
+    "/{document_id}/pages",
+    response_model=PageResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_page(
+    document_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    document = await _get_owned_document(document_id, current_user, db)
+
+    if file.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Unsupported content type. Allowed: {sorted(ALLOWED_CONTENT_TYPES)}",
+        )
+
+    raw = await file.read()
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File exceeds {MAX_UPLOAD_BYTES} bytes",
+        )
+
+    try:
+        with Image.open(io.BytesIO(raw)) as img:
+            img.verify()
+        with Image.open(io.BytesIO(raw)) as img:
+            width, height = img.size
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid image file",
+        )
+
+    extension = {
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+    }[file.content_type]
+
+    next_number_result = await db.execute(
+        select(func.coalesce(func.max(Page.page_number), 0) + 1).where(
+            Page.document_id == document_id
+        )
+    )
+    next_page_number = next_number_result.scalar_one()
+
+    page = Page(
+        document_id=document_id,
+        page_number=next_page_number,
+        width=width,
+        height=height,
+    )
+    db.add(page)
+    await db.flush()
+
+    storage_key = page_storage_key(
+        current_user.id, document_id, page.id, "original", extension
+    )
+
+    try:
+        await upload_bytes(storage_key, raw, file.content_type)
+    except Exception:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to store image",
+        )
+
+    page.original_storage_key = storage_key
+    document.page_count = document.page_count + 1
+
+    try:
+        await db.commit()
+    except Exception:
+        await delete_object(storage_key)
+        raise
+
+    await db.refresh(page)
+    return page
