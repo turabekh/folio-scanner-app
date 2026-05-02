@@ -8,11 +8,11 @@
             class="text-white text-decoration-none"
             style="text-decoration: none; color: inherit"
           >
-            Scanner
+            Folio
           </router-link>
         </q-toolbar-title>
         <q-btn flat round dense icon="search" :to="{ name: 'search' }" aria-label="Search" />
-        <q-btn-dropdown flat :label="auth.user?.email || 'Account'">
+        <q-btn-dropdown flat :label="auth.user?.email? auth.user?.email[0] : 'A' || 'Account'">
           <q-list>
             <q-item clickable v-close-popup @click="onShowBatteryHelp" v-if="isNative">
               <q-item-section avatar>

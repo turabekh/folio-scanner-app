@@ -1,14 +1,5 @@
 <template>
   <q-page padding>
-    <q-btn
-      flat
-      icon="arrow_back"
-      label="Back"
-      :to="{ name: 'documents' }"
-      class="q-mb-sm"
-      no-caps
-    />
-
     <div v-if="loading" class="text-center q-mt-xl">
       <q-spinner-dots size="40px" color="primary" />
     </div>
@@ -18,29 +9,8 @@
     </q-banner>
 
     <template v-else-if="document">
-      <div class="row items-center q-mb-md q-gutter-sm">
-<div class="col">
-          <q-input
-            v-model="titleDraft"
-            dense
-            borderless
-            class="text-h5 doc-title-input"
-            input-class="text-h5"
-            :readonly="!editingTitle"
-            @focus="editingTitle = true"
-            @blur="onTitleBlur"
-            @keyup.enter="onTitleEnter"
-          >
-            <template v-slot:append v-if="!editingTitle">
-              <q-icon name="edit" size="18px" color="grey-6" />
-            </template>
-          </q-input>
-          <div class="text-caption text-grey-7 q-pl-sm">
-            {{ pages.length }} {{ pages.length === 1 ? 'page' : 'pages' }}
-          </div>
-        </div>
-        <q-space />
-<q-btn
+      <div class="row q-gutter-sm q-mb-sm justify-center items-center q-gutter-lg">
+        <q-btn
           v-if="pages.length > 0"
           icon="picture_as_pdf"
           label="PDF"
@@ -61,23 +31,49 @@
           :loading="sharing"
         />
         <q-btn
-          :label="isNative ? 'Scan' : 'Add page'"
+          :label="isNative ? 'Scan' : 'Add'"
           :icon="isNative ? 'document_scanner' : 'add_a_photo'"
           color="primary"
           unelevated
+          no-caps
+          rounded
           @click="onCaptureClick"
           :loading="uploading"
         />
       </div>
-
+      <q-separator class="q-my-sm" />
+      <div class="row items-center q-mb-md">
+        <q-input
+          v-model="titleDraft"
+          dense
+          borderless
+          class="text-h5 doc-title-input col"
+          input-class="text-h5"
+          :readonly="!editingTitle"
+          @focus="editingTitle = true"
+          @blur="onTitleBlur"
+          @keyup.enter="onTitleEnter"
+        />
+        <q-btn
+          v-if="!editingTitle"
+          flat
+          round
+          dense
+          icon="edit"
+          color="grey-7"
+          size="sm"
+          @click="onStartEditTitle"
+          aria-label="Rename"
+        />
+      </div>
       <div v-if="pages.length === 0" class="text-center q-mt-xl text-grey-7">
         <q-icon :name="isNative ? 'document_scanner' : 'add_a_photo'" size="64px" class="q-mb-md" />
         <div class="text-h6">No pages yet</div>
         <div class="text-body2 q-mt-sm">
-          {{ isNative ? 'Tap "Scan" to capture a page.' : 'Tap "Add page" to upload a scan.' }}
+          {{ isNative ? 'Tap "Scan" to capture a page.' : 'Tap "Add" to upload a scan.' }}
         </div>
       </div>
-
+      
       <div v-else class="row q-col-gutter-md">
         <PageThumbnail
           v-for="page in pages"
@@ -158,6 +154,15 @@ async function loadDocument() {
   } finally {
     loading.value = false
   }
+}
+
+function onStartEditTitle() {
+  editingTitle.value = true
+  setTimeout(() => {
+    const input = window.document.querySelector('.doc-title-input input')
+    input?.focus()
+    input?.select()
+  }, 50)
 }
 
 async function onTitleBlur() {
@@ -381,9 +386,14 @@ function blobToBase64(blob) {
 <style scoped>
 .doc-title-input :deep(.q-field__control) {
   padding: 0;
+  min-height: 0;
 }
 .doc-title-input :deep(.q-field__native) {
   padding: 0;
   min-height: 1.6em;
+  font-weight: 500;
+}
+.doc-title-input :deep(.q-field__control:before) {
+  border: none;
 }
 </style>

@@ -1,6 +1,6 @@
 {
   "appId": "com.scanner.app",
-  "appName": "Scanner",
+  "appName": "Folio",
   "webDir": "../dist/spa",
   "bundledWebRuntime": false,
   "server": {

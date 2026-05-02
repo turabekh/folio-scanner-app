@@ -22,26 +22,20 @@
       />
       <q-inner-loading :showing="enhancing || ocrRunning">
         <q-spinner-dots color="primary" size="32px" />
-        <div v-if="ocrRunning" class="text-caption q-mt-sm text-primary">
-          Reading text...
-        </div>
+        <div v-if="ocrRunning" class="text-caption q-mt-sm text-primary">Reading text...</div>
       </q-inner-loading>
     </div>
-    <q-card-section class="q-py-xs row items-center">
-      <div class="text-caption">
-        Page {{ page.page_number }}
-        <q-icon
-          v-if="page.ocr_text"
-          name="text_fields"
-          size="14px"
-          color="green-7"
-          class="q-ml-xs"
-        >
-          <q-tooltip>Has extracted text</q-tooltip>
-        </q-icon>
-      </div>
-      <q-space />
-      <q-btn-dropdown flat dense size="sm" icon="palette" :disable="enhancing || ocrRunning">
+    <div class="thumb-actions row no-wrap">
+      <q-btn-dropdown
+        flat
+        dense
+        no-caps
+        icon="palette"
+        class="col"
+        :disable="enhancing || ocrRunning"
+        no-icon-animation
+        dropdown-icon=""
+      >
         <q-list>
           <q-item
             v-for="option in filterOptions"
@@ -61,8 +55,9 @@
       <q-btn
         flat
         dense
-        size="sm"
-        icon="text_fields"
+        :icon="page.ocr_text ? 'text_fields' : 'text_fields'"
+        :color="page.ocr_text ? 'green-7' : ''"
+        class="col"
         @click.stop="onOcrClick"
         :disable="enhancing || ocrRunning"
       >
@@ -70,44 +65,28 @@
       </q-btn>
       <q-btn
         flat
-        round
         dense
-        size="sm"
         icon="delete"
-        color="grey-7"
+        color="orange-4"
+        class="col"
         @click.stop="$emit('delete', page)"
         :disable="enhancing || ocrRunning"
       />
-    </q-card-section>
+    </div>
 
     <q-dialog v-model="textDialog">
-      <q-card style="min-width: 320px; max-width: 600px;">
+      <q-card style="min-width: 320px; max-width: 600px">
         <q-card-section class="row items-center q-pb-none">
           <div class="text-h6">Page {{ page.page_number }} text</div>
           <q-space />
           <q-btn icon="close" flat round dense v-close-popup />
         </q-card-section>
         <q-card-section>
-          <div v-if="!page.ocr_text" class="text-grey-7 text-body2">
-            No text extracted yet.
-          </div>
-          <q-input
-            v-else
-            type="textarea"
-            :model-value="page.ocr_text"
-            readonly
-            outlined
-            autogrow
-          />
+          <div v-if="!page.ocr_text" class="text-grey-7 text-body2">No text extracted yet.</div>
+          <q-input v-else type="textarea" :model-value="page.ocr_text" readonly outlined autogrow />
         </q-card-section>
         <q-card-actions align="right">
-          <q-btn
-            v-if="page.ocr_text"
-            flat
-            label="Copy"
-            icon="content_copy"
-            @click="onCopyText"
-          />
+          <q-btn v-if="page.ocr_text" flat label="Copy" icon="content_copy" @click="onCopyText" />
           <q-btn
             unelevated
             color="primary"
@@ -227,5 +206,19 @@ async function onCopyText() {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.thumb-actions {
+  border-top: 1px solid #e0e0e0;
+}
+
+.thumb-actions :deep(.q-btn) {
+  min-width: 0;
+  padding: 6px 0;
+  border-radius: 0;
+}
+
+.thumb-actions :deep(.q-btn:not(:last-child)) {
+  border-right: 1px solid #e0e0e0;
 }
 </style>
