@@ -18,7 +18,7 @@
     </q-banner>
 
     <template v-else-if="document">
-      <div class="row items-center q-mb-md">
+      <div class="row items-center q-mb-md q-gutter-sm">
         <div>
           <div class="text-h5">{{ document.title }}</div>
           <div class="text-caption text-grey-7">
@@ -26,6 +26,16 @@
           </div>
         </div>
         <q-space />
+        <q-btn
+          v-if="pages.length > 0"
+          icon="picture_as_pdf"
+          label="PDF"
+          color="grey-8"
+          flat
+          no-caps
+          @click="onDownloadPdf"
+          :loading="generatingPdf"
+        />
         <q-btn
           :label="isNative ? 'Scan' : 'Add page'"
           :icon="isNative ? 'document_scanner' : 'add_a_photo'"
@@ -78,6 +88,7 @@ const pages = ref([])
 const loading = ref(true)
 const error = ref(null)
 const uploading = ref(false)
+const generatingPdf = ref(false)
 
 const isNative = isNativePlatform()
 
@@ -146,10 +157,6 @@ async function onCaptureClick() {
   }
 }
 
-function onPageUpdated(updated) {
-  pages.value = pages.value.map((p) => (p.id === updated.id ? updated : p))
-}
-
 async function onDeletePage(page) {
   $q.dialog({
     title: 'Delete page?',
@@ -173,5 +180,34 @@ async function onDeletePage(page) {
       })
     }
   })
+}
+
+function onPageUpdated(updated) {
+  pages.value = pages.value.map((p) => (p.id === updated.id ? updated : p))
+}
+
+async function onDownloadPdf() {
+  generatingPdf.value = true
+  try {
+    const blob = await documentsService.fetchDocumentPdfBlob(documentId)
+    const url = URL.createObjectURL(blob)
+    const safeName = (document.value?.title || 'document').replace(/[^\w\s-]/g, '_').slice(0, 80)
+    const link = window.document.createElement('a')
+    link.href = url
+    link.download = `${safeName}.pdf`
+    window.document.body.appendChild(link)
+    link.click()
+    window.document.body.removeChild(link)
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    $q.notify({ type: 'positive', message: 'PDF ready', position: 'top' })
+  } catch (err) {
+    $q.notify({
+      type: 'negative',
+      message: err.response?.data?.detail || 'Failed to generate PDF',
+      position: 'top',
+    })
+  } finally {
+    generatingPdf.value = false
+  }
 }
 </script>

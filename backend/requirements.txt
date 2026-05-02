@@ -14,3 +14,4 @@ pillow==11.0.0
 opencv-python-headless==4.10.0.84
 numpy==2.1.3
 pytesseract==0.3.13
+reportlab

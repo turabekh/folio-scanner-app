@@ -1,22 +1,23 @@
 import io
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from PIL import Image
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.page import PageEnhanceRequest, PageOcrTextRequest, PageResponse
-from app.services.ocr import extract_text
-
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.models import Document, Page, User
 from app.schemas.document import DocumentCreateRequest, DocumentResponse
-from app.schemas.page import PageEnhanceRequest, PageResponse
+from app.schemas.page import PageEnhanceRequest, PageOcrTextRequest, PageResponse
 from app.services.image_processing import apply_filter
+from app.services.ocr import extract_text
+from app.services.pdf_generator import generate_pdf
 from app.services.storage import (
     delete_object,
+    document_pdf_key,
     download_bytes,
     page_storage_key,
     upload_bytes,
@@ -72,6 +73,16 @@ async def _get_owned_page(
             detail="Page not found",
         )
     return page
+
+
+async def _invalidate_document_pdf(document: Document) -> None:
+    if document.pdf_storage_key:
+        try:
+            await delete_object(document.pdf_storage_key)
+        except Exception:
+            pass
+    document.pdf_storage_key = None
+    document.pdf_generated_at = None
 
 
 @router.get("", response_model=list[DocumentResponse])
@@ -217,6 +228,7 @@ async def upload_page(
 
     page.original_storage_key = storage_key
     document.page_count = document.page_count + 1
+    await _invalidate_document_pdf(document)
 
     try:
         await db.commit()
@@ -271,6 +283,7 @@ async def enhance_page(
     db: AsyncSession = Depends(get_db),
 ):
     page = await _get_owned_page(document_id, page_id, current_user, db)
+    document = await _get_owned_document(document_id, current_user, db)
 
     if page.original_storage_key is None:
         raise HTTPException(
@@ -298,6 +311,7 @@ async def enhance_page(
 
     page.enhanced_storage_key = new_enhanced_key
     page.filter_applied = payload.filter
+    await _invalidate_document_pdf(document)
     await db.commit()
     await db.refresh(page)
 
@@ -308,6 +322,39 @@ async def enhance_page(
             pass
 
     return page
+
+
+@router.delete(
+    "/{document_id}/pages/{page_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_page(
+    document_id: uuid.UUID,
+    page_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    document = await _get_owned_document(document_id, current_user, db)
+    page = await _get_owned_page(document_id, page_id, current_user, db)
+
+    storage_keys = [
+        k for k in [
+            page.original_storage_key,
+            page.enhanced_storage_key,
+            page.thumbnail_storage_key,
+        ] if k is not None
+    ]
+
+    await db.delete(page)
+    document.page_count = max(0, document.page_count - 1)
+    await _invalidate_document_pdf(document)
+    await db.commit()
+
+    for key in storage_keys:
+        try:
+            await delete_object(key)
+        except Exception:
+            pass
 
 
 @router.post(
@@ -321,6 +368,7 @@ async def run_server_ocr(
     db: AsyncSession = Depends(get_db),
 ):
     page = await _get_owned_page(document_id, page_id, current_user, db)
+    document = await _get_owned_document(document_id, current_user, db)
 
     source_key = page.enhanced_storage_key or page.original_storage_key
     if source_key is None:
@@ -331,14 +379,15 @@ async def run_server_ocr(
 
     image_bytes, _ = await download_bytes(source_key)
     try:
-        text = extract_text(image_bytes)
+        text_value = extract_text(image_bytes)
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="OCR extraction failed",
         )
 
-    page.ocr_text = text
+    page.ocr_text = text_value
+    await _invalidate_document_pdf(document)
     await db.commit()
     await db.refresh(page)
     return page
@@ -356,7 +405,89 @@ async def set_page_ocr_text(
     db: AsyncSession = Depends(get_db),
 ):
     page = await _get_owned_page(document_id, page_id, current_user, db)
+    document = await _get_owned_document(document_id, current_user, db)
     page.ocr_text = payload.text
+    await _invalidate_document_pdf(document)
     await db.commit()
     await db.refresh(page)
     return page
+
+
+@router.get("/{document_id}/pdf")
+async def get_document_pdf(
+    document_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    document = await _get_owned_document(document_id, current_user, db)
+
+    if document.page_count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Document has no pages",
+        )
+
+    if document.pdf_storage_key:
+        try:
+            body, _ = await download_bytes(document.pdf_storage_key)
+            return Response(
+                content=body,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'inline; filename="{_safe_filename(document.title)}.pdf"',
+                    "Cache-Control": "private, max-age=300",
+                },
+            )
+        except Exception:
+            document.pdf_storage_key = None
+            document.pdf_generated_at = None
+
+    pages_result = await db.execute(
+        select(Page)
+        .where(Page.document_id == document_id)
+        .order_by(Page.page_number)
+    )
+    pages = list(pages_result.scalars().all())
+
+    page_inputs = []
+    for page in pages:
+        key = page.enhanced_storage_key or page.original_storage_key
+        if not key:
+            continue
+        image_bytes, _ = await download_bytes(key)
+        page_inputs.append((image_bytes, page.ocr_text))
+
+    if not page_inputs:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No page images available",
+        )
+
+    pdf_bytes = generate_pdf(page_inputs, title=document.title)
+
+    pdf_key = document_pdf_key(current_user.id, document_id)
+    try:
+        await upload_bytes(pdf_key, pdf_bytes, "application/pdf")
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to store generated PDF",
+        )
+
+    document.pdf_storage_key = pdf_key
+    document.pdf_generated_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{_safe_filename(document.title)}.pdf"',
+            "Cache-Control": "private, max-age=300",
+        },
+    )
+
+
+def _safe_filename(title: str) -> str:
+    safe = "".join(c if c.isalnum() or c in " -_" else "_" for c in title)
+    return safe.strip()[:80] or "document"

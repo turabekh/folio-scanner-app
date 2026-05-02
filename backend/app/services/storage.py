@@ -57,3 +57,7 @@ async def delete_object(key: str) -> None:
 
 def page_storage_key(user_id: uuid.UUID, document_id: uuid.UUID, page_id: uuid.UUID, kind: str, ext: str) -> str:
     return f"users/{user_id}/documents/{document_id}/pages/{page_id}/{kind}.{ext}"
+
+
+def document_pdf_key(user_id: uuid.UUID, document_id: uuid.UUID) -> str:
+    return f"users/{user_id}/documents/{document_id}/output.pdf"

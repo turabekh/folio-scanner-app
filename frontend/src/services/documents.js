@@ -18,3 +18,10 @@ export async function createDocument(title) {
 export async function deleteDocument(documentId) {
   await api.delete(`/documents/${documentId}`)
 }
+
+export async function fetchDocumentPdfBlob(documentId) {
+  const response = await api.get(`/documents/${documentId}/pdf`, {
+    responseType: 'blob',
+  })
+  return response.data
+}
