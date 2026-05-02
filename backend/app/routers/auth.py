@@ -18,9 +18,31 @@ from app.schemas.auth import (
     UserLoginRequest,
     UserRegisterRequest,
     UserResponse,
+    UserUpgradeRequest,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.post("/anonymous", response_model=TokenPairResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("20/hour")
+async def create_anonymous(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    user = User(
+        email=None,
+        password_hash=None,
+        is_anonymous=True,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+
+    return TokenPairResponse(
+        access_token=create_access_token(user.id),
+        refresh_token=create_refresh_token(user.id),
+    )
 
 
 @router.post(
@@ -44,6 +66,7 @@ async def register(
     user = User(
         email=payload.email,
         password_hash=hash_password(payload.password),
+        is_anonymous=False,
     )
     db.add(user)
     await db.commit()
@@ -62,7 +85,7 @@ async def login(
     result = await db.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()
 
-    if user is None or not verify_password(payload.password, user.password_hash):
+    if user is None or user.password_hash is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
@@ -72,6 +95,36 @@ async def login(
         access_token=create_access_token(user.id),
         refresh_token=create_refresh_token(user.id),
     )
+
+
+@router.post("/upgrade", response_model=UserResponse)
+async def upgrade_anonymous(
+    payload: UserUpgradeRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not current_user.is_anonymous:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Account already has credentials",
+        )
+
+    existing = await db.execute(
+        select(User).where(User.email == payload.email)
+    )
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already in use",
+        )
+
+    current_user.email = payload.email
+    current_user.password_hash = hash_password(payload.password)
+    current_user.is_anonymous = False
+    await db.commit()
+    await db.refresh(current_user)
+
+    return current_user
 
 
 @router.post("/refresh", response_model=TokenPairResponse)

@@ -14,11 +14,17 @@ class UserLoginRequest(BaseModel):
     password: str
 
 
+class UserUpgradeRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    email: EmailStr
+    email: EmailStr | None
+    is_anonymous: bool
     created_at: datetime
 
 

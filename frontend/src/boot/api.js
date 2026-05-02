@@ -4,9 +4,7 @@ import { api, configureApi } from 'src/services/api'
 import { useAuthStore } from 'src/stores/auth'
 
 
-export default boot(({ app, router }) => {
-  console.log('[boot] api boot starting at', new Date().toISOString())
-
+export default boot(async ({ app }) => {
   const authStore = useAuthStore()
 
   configureApi({
@@ -16,30 +14,17 @@ export default boot(({ app, router }) => {
       authStore.setTokens(access, refresh)
     },
     onUnauthorized: () => {
-      authStore.logout()
-      const currentRoute = router.currentRoute.value
-      if (currentRoute.name !== 'login') {
-        router.push({ name: 'login' })
-      }
+      authStore.setTokens(null, null)
+      authStore.user = null
     },
   })
 
   app.config.globalProperties.$api = api
 
-  if (typeof window !== 'undefined') {
-    window.__appBootCount = (window.__appBootCount || 0) + 1
-    console.log('[boot] app boot count:', window.__appBootCount)
-
-    window.addEventListener('beforeunload', () => {
-      console.log('[boot] beforeunload fired')
-    })
-
-    window.addEventListener('pagehide', () => {
-      console.log('[boot] pagehide fired')
-    })
-
-    document.addEventListener('visibilitychange', () => {
-      console.log('[boot] visibility:', document.visibilityState)
-    })
+  // Boot session: silent anonymous if needed
+  try {
+    await authStore.ensureSession()
+  } catch (err) {
+    console.error('[boot] failed to establish session', err)
   }
 })

@@ -13,8 +13,13 @@ export const useAuthStore = defineStore('auth', () => {
   const refreshToken = ref(localStorage.getItem(REFRESH_TOKEN_KEY))
   const user = ref(null)
   const loading = ref(false)
+  const initializing = ref(false)
 
   const isAuthenticated = computed(() => !!accessToken.value)
+  const isAnonymous = computed(() => user.value?.is_anonymous === true)
+  const hasAccount = computed(
+    () => isAuthenticated.value && user.value && user.value.is_anonymous === false
+  )
 
   function setTokens(access, refresh) {
     accessToken.value = access
@@ -31,15 +36,22 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function register(email, password) {
-    loading.value = true
+  async function ensureSession() {
+    if (initializing.value) return
+    initializing.value = true
     try {
-      await authService.register(email, password)
-      const tokens = await authService.login(email, password)
-      setTokens(tokens.access_token, tokens.refresh_token)
+      if (!accessToken.value) {
+        const tokens = await authService.createAnonymous()
+        setTokens(tokens.access_token, tokens.refresh_token)
+      }
       await loadCurrentUser()
+    } catch (err) {
+      console.error('[auth] ensureSession failed', err)
+      setTokens(null, null)
+      user.value = null
+      throw err
     } finally {
-      loading.value = false
+      initializing.value = false
     }
   }
 
@@ -54,6 +66,28 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function register(email, password) {
+    loading.value = true
+    try {
+      await authService.register(email, password)
+      const tokens = await authService.login(email, password)
+      setTokens(tokens.access_token, tokens.refresh_token)
+      await loadCurrentUser()
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function upgradeAccount(email, password) {
+    loading.value = true
+    try {
+      const updated = await authService.upgradeAccount(email, password)
+      user.value = updated
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function loadCurrentUser() {
     if (!accessToken.value) {
       user.value = null
@@ -63,9 +97,15 @@ export const useAuthStore = defineStore('auth', () => {
     return user.value
   }
 
-  function logout() {
+  async function logout() {
     setTokens(null, null)
     user.value = null
+    // Immediately set up a fresh anonymous session
+    try {
+      await ensureSession()
+    } catch {
+      // best-effort
+    }
   }
 
   return {
@@ -73,9 +113,14 @@ export const useAuthStore = defineStore('auth', () => {
     refreshToken,
     user,
     loading,
+    initializing,
     isAuthenticated,
+    isAnonymous,
+    hasAccount,
+    ensureSession,
     register,
     login,
+    upgradeAccount,
     logout,
     loadCurrentUser,
     setTokens,

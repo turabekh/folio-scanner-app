@@ -2,7 +2,6 @@ const routes = [
   {
     path: '/',
     component: () => import('layouts/AppLayout.vue'),
-    meta: { requiresAuth: true },
     children: [
       {
         path: '',
@@ -24,7 +23,6 @@ const routes = [
   {
     path: '/auth',
     component: () => import('layouts/AuthLayout.vue'),
-    meta: { guestOnly: true },
     children: [
       {
         path: 'login',
