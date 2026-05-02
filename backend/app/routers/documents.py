@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.models import Document, Page, User
-from app.schemas.document import DocumentCreateRequest, DocumentResponse
+from app.schemas.document import DocumentCreateRequest, DocumentResponse, DocumentUpdateRequest
 from app.schemas.page import PageEnhanceRequest, PageOcrTextRequest, PageResponse
 from app.services.image_processing import apply_filter
 from app.services.ocr import extract_text
@@ -111,6 +111,7 @@ async def create_document(
     document = Document(
         user_id=current_user.id,
         title=payload.title,
+        kind=payload.kind,
     )
     db.add(document)
     await db.commit()
@@ -125,6 +126,19 @@ async def get_document(
     db: AsyncSession = Depends(get_db),
 ):
     return await _get_owned_document(document_id, current_user, db)
+
+@router.patch("/{document_id}", response_model=DocumentResponse)
+async def update_document(
+    document_id: uuid.UUID,
+    payload: DocumentUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    document = await _get_owned_document(document_id, current_user, db)
+    document.title = payload.title
+    await db.commit()
+    await db.refresh(document)
+    return document
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
