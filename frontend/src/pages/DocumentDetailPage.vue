@@ -73,7 +73,7 @@
           {{ isNative ? 'Tap "Scan" to capture a page.' : 'Tap "Add" to upload a scan.' }}
         </div>
       </div>
-      
+
       <div v-else class="row q-col-gutter-md">
         <PageThumbnail
           v-for="page in pages"
@@ -94,6 +94,14 @@
         :start-index="previewIndex"
       />
     </template>
+    <UpgradeAccountDialog
+      v-model="upgradeDialogOpen"
+      :title="upgradeContext.title"
+      :description="upgradeContext.description"
+      @upgraded="onUpgraded"
+      @signed-in="onSignedIn"
+      @cancelled="onUpgradeCancelled"
+    />
   </q-page>
 </template>
 
@@ -109,6 +117,8 @@ import * as pagesService from 'src/services/pages'
 import { captureDocument, isNativePlatform } from 'src/composables/useScanner'
 import PageThumbnail from 'src/components/PageThumbnail.vue'
 import PagePreviewDialog from 'src/components/PagePreviewDialog.vue'
+import { useAuthStore } from 'src/stores/auth'
+import UpgradeAccountDialog from 'src/components/UpgradeAccountDialog.vue'
 
 const $q = useQuasar()
 const route = useRoute()
@@ -129,10 +139,15 @@ const titleDraft = ref('')
 const editingTitle = ref(false)
 
 const isNative = isNativePlatform()
+const auth = useAuthStore()
+const upgradeDialogOpen = ref(false)
+const upgradeContext = ref({ title: '', description: '' })
+let pendingAction = null
 
 onMounted(async () => {
   await loadDocument()
 })
+
 
 async function loadDocument() {
   loading.value = true
@@ -270,7 +285,45 @@ function onPreviewPage(page) {
   }
 }
 
-async function onDownloadPdf() {
+function requireAccount(actionLabel, contextDescription, action) {
+  console.log('[gate] requireAccount called, hasAccount=', auth.hasAccount, 'action=', actionLabel)
+  if (auth.hasAccount) {
+    console.log('[gate] already has account, running action immediately')
+    return action()
+  }
+  upgradeContext.value = {
+    title: actionLabel,
+    description: contextDescription,
+  }
+  pendingAction = action
+  console.log('[gate] queued pendingAction:', !!pendingAction)
+  upgradeDialogOpen.value = true
+}
+
+function onUpgraded() {
+  console.log('[gate] onUpgraded fired, pendingAction=', !!pendingAction)
+  if (pendingAction) {
+    const action = pendingAction
+    pendingAction = null
+    console.log('[gate] running queued action')
+    action()
+  } else {
+    console.log('[gate] no pending action to run')
+  }
+}
+
+function onSignedIn() {
+  console.log('[gate] onSignedIn fired, redirecting')
+  pendingAction = null
+  router.push({ name: 'documents' })
+}
+
+function onUpgradeCancelled() {
+  console.log('[gate] onUpgradeCancelled fired')
+  pendingAction = null
+}
+
+async function downloadPdf() {
   generatingPdf.value = true
   try {
     const blob = await documentsService.fetchDocumentPdfBlob(documentId)
@@ -296,7 +349,7 @@ async function onDownloadPdf() {
   }
 }
 
-async function onSharePdf() {
+async function sharePdf() {
   sharing.value = true
   try {
     const blob = await documentsService.fetchDocumentPdfBlob(documentId)
@@ -319,8 +372,10 @@ async function onSharePdf() {
       })
       return
     }
-    if (err?.message?.toLowerCase().includes('cancel') || err?.message?.toLowerCase().includes('abort')) {
-      // User cancelled the share sheet — silent
+    if (
+      err?.message?.toLowerCase().includes('cancel') ||
+      err?.message?.toLowerCase().includes('abort')
+    ) {
       return
     }
     console.error('[share] failed:', err)
@@ -332,6 +387,22 @@ async function onSharePdf() {
   } finally {
     sharing.value = false
   }
+}
+
+function onDownloadPdf() {
+  requireAccount(
+    'Save as PDF',
+    'Create a free account to download your scans as PDFs.',
+    downloadPdf,
+  )
+}
+
+function onSharePdf() {
+  requireAccount(
+    'Share document',
+    'Create a free account to share documents with WhatsApp, email, and more.',
+    sharePdf,
+  )
 }
 
 function saveOnWeb(blob, filename) {

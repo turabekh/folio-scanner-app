@@ -3,13 +3,29 @@
     <q-card style="min-width: 320px; max-width: 480px;">
       <q-card-section class="text-center q-pt-lg">
         <q-icon name="cloud_upload" size="64px" color="primary" />
-        <div class="text-h6 q-mt-md">Save your scans</div>
+        <div class="text-h6 q-mt-md">{{ resolvedTitle }}</div>
       </q-card-section>
 
-      <q-card-section class="q-pt-none">
-        <p class="text-body2 q-mb-md">
-          Create an account to keep your scans safe and access them on any device.
+      <q-tabs
+        v-model="mode"
+        dense
+        align="justify"
+        active-color="primary"
+        indicator-color="primary"
+      >
+        <q-tab name="signup" label="Sign up" />
+        <q-tab name="signin" label="Sign in" />
+      </q-tabs>
+      <q-separator />
+
+      <q-card-section class="q-pt-md">
+        <p v-if="mode === 'signup'" class="text-body2 q-mb-md">
+          {{ resolvedDescription }}
         </p>
+        <p v-else class="text-body2 q-mb-md">
+          Sign in with your existing account.
+        </p>
+
         <q-form @submit.prevent="onSubmit" class="q-gutter-md">
           <q-input
             v-model="email"
@@ -22,9 +38,9 @@
           <q-input
             v-model="password"
             type="password"
-            label="Password (8+ characters)"
+            :label="mode === 'signup' ? 'Password (8+ characters)' : 'Password'"
             outlined
-            :rules="[(v) => v.length >= 8 || 'At least 8 characters']"
+            :rules="passwordRules"
           />
         </q-form>
       </q-card-section>
@@ -33,7 +49,7 @@
         <q-btn flat label="Cancel" color="grey-7" @click="onCancel" />
         <q-btn
           unelevated
-          label="Create account"
+          :label="mode === 'signup' ? 'Create account' : 'Sign in'"
           color="primary"
           @click="onSubmit"
           :loading="submitting"
@@ -50,20 +66,45 @@ import { useQuasar } from 'quasar'
 
 import { useAuthStore } from 'src/stores/auth'
 
+const props = defineProps({
+  title: { type: String, default: '' },
+  description: { type: String, default: '' },
+})
+
 const open = defineModel({ type: Boolean, default: false })
+const emit = defineEmits(['upgraded', 'signed-in', 'cancelled'])
+
 const $q = useQuasar()
 const auth = useAuthStore()
 
+const mode = ref('signup')
 const email = ref('')
 const password = ref('')
 const submitting = ref(false)
 
-const canSubmit = computed(
-  () => email.value.includes('@') && password.value.length >= 8
+const canSubmit = computed(() => {
+  if (!email.value.includes('@')) return false
+  if (mode.value === 'signup') return password.value.length >= 8
+  return password.value.length > 0
+})
+
+const passwordRules = computed(() => {
+  if (mode.value === 'signup') {
+    return [(v) => v.length >= 8 || 'At least 8 characters']
+  }
+  return [(v) => !!v || 'Password is required']
+})
+
+const resolvedTitle = computed(() => props.title || 'Save your scans')
+const resolvedDescription = computed(
+  () =>
+    props.description ||
+    'Create an account to keep your scans safe and access them on any device.'
 )
 
 watch(open, (val) => {
   if (val) {
+    mode.value = 'signup'
     email.value = ''
     password.value = ''
   }
@@ -73,19 +114,27 @@ async function onSubmit() {
   if (!canSubmit.value) return
   submitting.value = true
   try {
-    await auth.upgradeAccount(email.value.trim(), password.value)
-    open.value = false
-    $q.notify({
-      type: 'positive',
-      message: 'Account created. Your scans are saved.',
-      position: 'top',
-    })
+    if (mode.value === 'signup') {
+      await auth.upgradeAccount(email.value.trim(), password.value)
+      $q.notify({ type: 'positive', message: 'Account created', position: 'top' })
+      open.value = false
+      emit('upgraded')
+    } else {
+      await auth.login(email.value.trim(), password.value)
+      $q.notify({ type: 'positive', message: 'Signed in', position: 'top' })
+      open.value = false
+      emit('signed-in')
+    }
   } catch (err) {
-    $q.notify({
-      type: 'negative',
-      message: err.response?.data?.detail || 'Failed to create account',
-      position: 'top',
-    })
+    const detail = err.response?.data?.detail
+    let message = detail
+    if (!message) {
+      message =
+        mode.value === 'signup'
+          ? 'Failed to create account'
+          : 'Failed to sign in'
+    }
+    $q.notify({ type: 'negative', message, position: 'top' })
   } finally {
     submitting.value = false
   }
@@ -93,5 +142,6 @@ async function onSubmit() {
 
 function onCancel() {
   open.value = false
+  emit('cancelled')
 }
 </script>
