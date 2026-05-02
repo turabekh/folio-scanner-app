@@ -9,6 +9,11 @@ const routes = [
         name: 'documents',
         component: () => import('pages/DocumentsPage.vue'),
       },
+      {
+        path: 'documents/:id',
+        name: 'document-detail',
+        component: () => import('pages/DocumentDetailPage.vue'),
+      },
     ],
   },
   {

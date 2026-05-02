@@ -42,6 +42,14 @@ async def upload_bytes(key: str, data: bytes, content_type: str) -> str:
     return key
 
 
+async def download_bytes(key: str) -> tuple[bytes, str]:
+    async with s3_client() as client:
+        response = await client.get_object(Bucket=settings.s3_bucket, Key=key)
+        body = await response["Body"].read()
+        content_type = response.get("ContentType", "application/octet-stream")
+        return body, content_type
+
+
 async def delete_object(key: str) -> None:
     async with s3_client() as client:
         await client.delete_object(Bucket=settings.s3_bucket, Key=key)

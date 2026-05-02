@@ -32,6 +32,7 @@
         :key="doc.id"
         clickable
         v-ripple
+        :to="{ name: 'document-detail', params: { id: doc.id } }"
       >
         <q-item-section avatar>
           <q-avatar color="grey-3" text-color="grey-8" icon="description" />

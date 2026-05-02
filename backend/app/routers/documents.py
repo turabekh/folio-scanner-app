@@ -1,7 +1,7 @@
 import io
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from PIL import Image
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +11,12 @@ from app.database import get_db
 from app.models import Document, Page, User
 from app.schemas.document import DocumentCreateRequest, DocumentResponse
 from app.schemas.page import PageResponse
-from app.services.storage import delete_object, page_storage_key, upload_bytes
+from app.services.storage import (
+    delete_object,
+    download_bytes,
+    page_storage_key,
+    upload_bytes,
+)
 
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -39,6 +44,30 @@ async def _get_owned_document(
             detail="Document not found",
         )
     return document
+
+
+async def _get_owned_page(
+    document_id: uuid.UUID,
+    page_id: uuid.UUID,
+    user: User,
+    db: AsyncSession,
+) -> Page:
+    result = await db.execute(
+        select(Page)
+        .join(Document, Page.document_id == Document.id)
+        .where(
+            Page.id == page_id,
+            Page.document_id == document_id,
+            Document.user_id == user.id,
+        )
+    )
+    page = result.scalar_one_or_none()
+    if page is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Page not found",
+        )
+    return page
 
 
 @router.get("", response_model=list[DocumentResponse])
@@ -193,3 +222,58 @@ async def upload_page(
 
     await db.refresh(page)
     return page
+
+
+@router.get("/{document_id}/pages/{page_id}/image")
+async def get_page_image(
+    document_id: uuid.UUID,
+    page_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    page = await _get_owned_page(document_id, page_id, current_user, db)
+
+    if page.original_storage_key is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Page image not available",
+        )
+
+    body, content_type = await download_bytes(page.original_storage_key)
+    return Response(
+        content=body,
+        media_type=content_type,
+        headers={"Cache-Control": "private, max-age=300"},
+    )
+
+
+@router.delete(
+    "/{document_id}/pages/{page_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_page(
+    document_id: uuid.UUID,
+    page_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    document = await _get_owned_document(document_id, current_user, db)
+    page = await _get_owned_page(document_id, page_id, current_user, db)
+
+    storage_keys = [
+        k for k in [
+            page.original_storage_key,
+            page.enhanced_storage_key,
+            page.thumbnail_storage_key,
+        ] if k is not None
+    ]
+
+    await db.delete(page)
+    document.page_count = max(0, document.page_count - 1)
+    await db.commit()
+
+    for key in storage_keys:
+        try:
+            await delete_object(key)
+        except Exception:
+            pass
