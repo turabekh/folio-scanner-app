@@ -20,6 +20,27 @@ services:
       - "traefik.http.routers.dashboard.tls=true"
       - "traefik.http.routers.dashboard.service=api@internal"
 
+  api:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./backend/app:/app/app
+    networks:
+      - scanner-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`${API_HOST}`)"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls=true"
+      - "traefik.http.services.api.loadbalancer.server.port=8000"
+
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
