@@ -10,8 +10,13 @@ export async function getDocument(documentId) {
   return data
 }
 
-export async function createDocument(title) {
-  const { data } = await api.post('/documents', { title })
+export async function createDocument(title, kind = 'document') {
+  const { data } = await api.post('/documents', { title, kind })
+  return data
+}
+
+export async function updateDocument(documentId, { title }) {
+  const { data } = await api.patch(`/documents/${documentId}`, { title })
   return data
 }
 

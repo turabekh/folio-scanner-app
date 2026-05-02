@@ -19,14 +19,28 @@
 
     <template v-else-if="document">
       <div class="row items-center q-mb-md q-gutter-sm">
-        <div>
-          <div class="text-h5">{{ document.title }}</div>
-          <div class="text-caption text-grey-7">
+<div class="col">
+          <q-input
+            v-model="titleDraft"
+            dense
+            borderless
+            class="text-h5 doc-title-input"
+            input-class="text-h5"
+            :readonly="!editingTitle"
+            @focus="editingTitle = true"
+            @blur="onTitleBlur"
+            @keyup.enter="onTitleEnter"
+          >
+            <template v-slot:append v-if="!editingTitle">
+              <q-icon name="edit" size="18px" color="grey-6" />
+            </template>
+          </q-input>
+          <div class="text-caption text-grey-7 q-pl-sm">
             {{ pages.length }} {{ pages.length === 1 ? 'page' : 'pages' }}
           </div>
         </div>
         <q-space />
-        <q-btn
+<q-btn
           v-if="pages.length > 0"
           icon="picture_as_pdf"
           label="PDF"
@@ -35,6 +49,16 @@
           no-caps
           @click="onDownloadPdf"
           :loading="generatingPdf"
+        />
+        <q-btn
+          v-if="pages.length > 0"
+          icon="share"
+          label="Share"
+          color="grey-8"
+          flat
+          no-caps
+          @click="onSharePdf"
+          :loading="sharing"
         />
         <q-btn
           :label="isNative ? 'Scan' : 'Add page'"
@@ -82,6 +106,7 @@ import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { Capacitor } from '@capacitor/core'
+import { shareBlob, ShareUnsupportedError } from 'src/composables/useShare'
 
 import * as documentsService from 'src/services/documents'
 import * as pagesService from 'src/services/pages'
@@ -100,9 +125,12 @@ const loading = ref(true)
 const error = ref(null)
 const uploading = ref(false)
 const generatingPdf = ref(false)
+const sharing = ref(false)
 
 const previewOpen = ref(false)
 const previewIndex = ref(0)
+const titleDraft = ref('')
+const editingTitle = ref(false)
 
 const isNative = isNativePlatform()
 
@@ -120,6 +148,7 @@ async function loadDocument() {
     ])
     document.value = docData
     pages.value = pagesData
+    titleDraft.value = docData.title
   } catch (err) {
     if (err.response?.status === 404) {
       router.replace({ name: 'documents' })
@@ -129,6 +158,34 @@ async function loadDocument() {
   } finally {
     loading.value = false
   }
+}
+
+async function onTitleBlur() {
+  if (!editingTitle.value) return
+  editingTitle.value = false
+  const trimmed = titleDraft.value.trim()
+  if (!trimmed || trimmed === document.value?.title) {
+    titleDraft.value = document.value?.title || ''
+    return
+  }
+  try {
+    const updated = await documentsService.updateDocument(documentId, {
+      title: trimmed,
+    })
+    document.value = updated
+    titleDraft.value = updated.title
+  } catch (err) {
+    titleDraft.value = document.value?.title || ''
+    $q.notify({
+      type: 'negative',
+      message: err.response?.data?.detail || 'Failed to rename',
+      position: 'top',
+    })
+  }
+}
+
+function onTitleEnter(event) {
+  event.target.blur()
 }
 
 async function onCaptureClick() {
@@ -234,6 +291,44 @@ async function onDownloadPdf() {
   }
 }
 
+async function onSharePdf() {
+  sharing.value = true
+  try {
+    const blob = await documentsService.fetchDocumentPdfBlob(documentId)
+    const safeName = (document.value?.title || 'document').replace(/[^\w\s-]/g, '_').slice(0, 80)
+    const filename = `${safeName}.pdf`
+    const title = document.value?.title || 'Document'
+
+    await shareBlob({
+      blob,
+      filename,
+      title,
+      text: `Sharing ${title}`,
+    })
+  } catch (err) {
+    if (err instanceof ShareUnsupportedError) {
+      $q.notify({
+        type: 'info',
+        message: err.message,
+        position: 'top',
+      })
+      return
+    }
+    if (err?.message?.toLowerCase().includes('cancel') || err?.message?.toLowerCase().includes('abort')) {
+      // User cancelled the share sheet — silent
+      return
+    }
+    console.error('[share] failed:', err)
+    $q.notify({
+      type: 'negative',
+      message: err?.message || 'Failed to share',
+      position: 'top',
+    })
+  } finally {
+    sharing.value = false
+  }
+}
+
 function saveOnWeb(blob, filename) {
   const url = URL.createObjectURL(blob)
   const link = window.document.createElement('a')
@@ -282,3 +377,13 @@ function blobToBase64(blob) {
   })
 }
 </script>
+
+<style scoped>
+.doc-title-input :deep(.q-field__control) {
+  padding: 0;
+}
+.doc-title-input :deep(.q-field__native) {
+  padding: 0;
+  min-height: 1.6em;
+}
+</style>
