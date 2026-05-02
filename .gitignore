@@ -35,3 +35,8 @@ postgres-data/
 redis-data/
 minio-data/
 uploads/
+
+.env
+.env.local
+.env.*.local
+.env.prod

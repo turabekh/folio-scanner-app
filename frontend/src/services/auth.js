@@ -10,6 +10,11 @@ export async function login(email, password) {
   return data
 }
 
+export async function refresh(refreshToken) {
+  const { data } = await api.post('/auth/refresh', { refresh_token: refreshToken })
+  return data
+}
+
 export async function fetchMe() {
   const { data } = await api.get('/auth/me')
   return data

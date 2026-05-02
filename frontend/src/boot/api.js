@@ -9,6 +9,10 @@ export default boot(({ app, router }) => {
 
   configureApi({
     getAccessToken: () => authStore.accessToken,
+    getRefreshToken: () => authStore.refreshToken,
+    onTokensRefreshed: (access, refresh) => {
+      authStore.setTokens(access, refresh)
+    },
     onUnauthorized: () => {
       authStore.logout()
       const currentRoute = router.currentRoute.value
