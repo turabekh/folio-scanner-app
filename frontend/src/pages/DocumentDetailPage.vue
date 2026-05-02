@@ -51,6 +51,7 @@
           :document-id="document.id"
           :page="page"
           @delete="onDeletePage"
+          @updated="onPageUpdated"
         />
       </div>
     </template>
@@ -143,6 +144,10 @@ async function onCaptureClick() {
   } finally {
     uploading.value = false
   }
+}
+
+function onPageUpdated(updated) {
+  pages.value = pages.value.map((p) => (p.id === updated.id ? updated : p))
 }
 
 async function onDeletePage(page) {

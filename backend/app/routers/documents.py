@@ -1,7 +1,7 @@
 import io
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from PIL import Image
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +10,8 @@ from app.core.deps import get_current_user
 from app.database import get_db
 from app.models import Document, Page, User
 from app.schemas.document import DocumentCreateRequest, DocumentResponse
-from app.schemas.page import PageResponse
+from app.schemas.page import PageEnhanceRequest, PageResponse
+from app.services.image_processing import apply_filter
 from app.services.storage import (
     delete_object,
     download_bytes,
@@ -228,18 +229,26 @@ async def upload_page(
 async def get_page_image(
     document_id: uuid.UUID,
     page_id: uuid.UUID,
+    variant: str = Query("auto", pattern="^(auto|original|enhanced)$"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     page = await _get_owned_page(document_id, page_id, current_user, db)
 
-    if page.original_storage_key is None:
+    if variant == "original":
+        key = page.original_storage_key
+    elif variant == "enhanced":
+        key = page.enhanced_storage_key
+    else:
+        key = page.enhanced_storage_key or page.original_storage_key
+
+    if key is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Page image not available",
         )
 
-    body, content_type = await download_bytes(page.original_storage_key)
+    body, content_type = await download_bytes(key)
     return Response(
         content=body,
         media_type=content_type,
@@ -247,33 +256,52 @@ async def get_page_image(
     )
 
 
-@router.delete(
-    "/{document_id}/pages/{page_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
+@router.post(
+    "/{document_id}/pages/{page_id}/enhance",
+    response_model=PageResponse,
 )
-async def delete_page(
+async def enhance_page(
     document_id: uuid.UUID,
     page_id: uuid.UUID,
+    payload: PageEnhanceRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    document = await _get_owned_document(document_id, current_user, db)
     page = await _get_owned_page(document_id, page_id, current_user, db)
 
-    storage_keys = [
-        k for k in [
-            page.original_storage_key,
-            page.enhanced_storage_key,
-            page.thumbnail_storage_key,
-        ] if k is not None
-    ]
+    if page.original_storage_key is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Page has no original image",
+        )
 
-    await db.delete(page)
-    document.page_count = max(0, document.page_count - 1)
-    await db.commit()
+    original_bytes, _ = await download_bytes(page.original_storage_key)
+    enhanced_bytes = apply_filter(original_bytes, payload.filter)
 
-    for key in storage_keys:
+    old_enhanced_key = page.enhanced_storage_key
+    new_enhanced_key = None
+
+    if payload.filter != "original":
+        new_enhanced_key = page_storage_key(
+            current_user.id, document_id, page.id, f"enhanced_{payload.filter}", "jpg"
+        )
         try:
-            await delete_object(key)
+            await upload_bytes(new_enhanced_key, enhanced_bytes, "image/jpeg")
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to store enhanced image",
+            )
+
+    page.enhanced_storage_key = new_enhanced_key
+    page.filter_applied = payload.filter
+    await db.commit()
+    await db.refresh(page)
+
+    if old_enhanced_key and old_enhanced_key != new_enhanced_key:
+        try:
+            await delete_object(old_enhanced_key)
         except Exception:
             pass
+
+    return page
