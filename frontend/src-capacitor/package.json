@@ -5,6 +5,8 @@
   "author": "Turaboy Holmirzaev <turabekh@gmail.com>",
   "private": true,
   "dependencies": {
+    "@capacitor-mlkit/document-scanner": "^8.0.1",
+    "@capacitor/android": "^8.3.1",
     "@capacitor/app": "^8.0.0",
     "@capacitor/cli": "^8.0.0",
     "@capacitor/core": "^8.0.0"
