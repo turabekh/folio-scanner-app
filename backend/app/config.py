@@ -7,5 +7,7 @@ class Settings(BaseSettings):
     app_name: str = "Scanner API"
     environment: str = "development"
 
+    database_url: str
+
 
 settings = Settings()
