@@ -6,6 +6,7 @@ class Settings(BaseSettings):
 
     app_name: str = "Scanner API"
     environment: str = "development"
+    log_level: str = "INFO"
 
     database_url: str
 
@@ -21,6 +22,9 @@ class Settings(BaseSettings):
     s3_secret_key: str
     s3_bucket: str
     s3_use_ssl: bool = False
+
+    rate_limit_register: str = "5/hour"
+    rate_limit_login: str = "20/minute"
 
 
 settings = Settings()
