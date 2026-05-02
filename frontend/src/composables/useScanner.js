@@ -22,40 +22,53 @@ function base64ToBlob(base64, contentType) {
 
 
 async function readNativeFile(uri) {
-  log('readNativeFile uri:', uri)
   const { Filesystem } = await import('@capacitor/filesystem')
   const result = await Filesystem.readFile({ path: uri })
-  log('readNativeFile got result, length:', result?.data?.length)
   return base64ToBlob(result.data, 'image/jpeg')
+}
+
+
+async function withKeepAlive(fn) {
+  if (!Capacitor.isNativePlatform()) return fn()
+  const { registerPlugin } = await import('@capacitor/core')
+  const KeepAlive = registerPlugin('KeepAlive')
+  try {
+    log('starting keep-alive service')
+    await KeepAlive.start()
+  } catch (err) {
+    log('keep-alive start failed (continuing):', err?.message)
+  }
+  try {
+    return await fn()
+  } finally {
+    try {
+      log('stopping keep-alive service')
+      await KeepAlive.stop()
+    } catch (err) {
+      log('keep-alive stop failed:', err?.message)
+    }
+  }
 }
 
 
 async function scanWithMlKit() {
   log('scanWithMlKit START')
   const { DocumentScanner } = await import('@capacitor-mlkit/document-scanner')
-  log('plugin imported, calling scanDocument...')
 
-  let result
-  try {
-    result = await DocumentScanner.scanDocument({
+  const result = await withKeepAlive(() =>
+    DocumentScanner.scanDocument({
       resultFormats: 'JPEG',
       pageLimit: 50,
       scannerMode: 'FULL',
       galleryImportAllowed: false,
     })
-  } catch (err) {
-    log('scanDocument THREW:', err?.message, err)
-    throw err
-  }
+  )
 
-  log('scanDocument RETURNED. typeof:', typeof result, 'keys:', result ? Object.keys(result) : 'null')
-  log('scanDocument full result:', JSON.stringify(result))
+  log('scanDocument returned:', JSON.stringify(result))
 
   const uris = collectImageUris(result)
-  log('collected', uris.length, 'uris:', uris)
-
   if (uris.length === 0) {
-    log('no image uris found in result, returning empty')
+    log('no image uris in result')
     return []
   }
 
@@ -69,9 +82,8 @@ async function scanWithMlKit() {
         type: 'image/jpeg',
       })
       files.push(file)
-      log('file created, size:', file.size)
     } catch (err) {
-      log('FAILED to read image at', uri, err?.message, err)
+      log('failed to read image at', uri, err?.message)
     }
   }
   log('returning', files.length, 'files')
@@ -106,14 +118,11 @@ function pickFromBrowser() {
 
 
 export async function captureDocument() {
-  log('captureDocument called, native:', isNativePlatform())
   if (isNativePlatform()) {
     try {
-      const files = await scanWithMlKit()
-      log('captureDocument returning', files.length, 'files')
-      return files
+      return await scanWithMlKit()
     } catch (err) {
-      log('captureDocument ERROR:', err?.message, err)
+      log('captureDocument error:', err?.message)
       const message = err?.message || ''
       if (message.toLowerCase().includes('cancel')) {
         return []

@@ -69,6 +69,7 @@
 </template>
 
 <script setup>
+import { Capacitor } from '@capacitor/core'
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
@@ -118,10 +119,13 @@ async function loadDocument() {
 }
 
 async function onCaptureClick() {
+  console.log('[detail] onCaptureClick start')
   let files = []
   try {
     files = await captureDocument()
+    console.log('[detail] captureDocument returned', files.length, 'files')
   } catch (err) {
+    console.error('[detail] captureDocument threw:', err)
     $q.notify({
       type: 'negative',
       message: err?.message || 'Failed to capture',
@@ -130,12 +134,17 @@ async function onCaptureClick() {
     return
   }
 
-  if (files.length === 0) return
+  if (files.length === 0) {
+    console.log('[detail] no files, returning early')
+    return
+  }
 
   uploading.value = true
   try {
     for (const file of files) {
+      console.log('[detail] uploading', file.name, 'size', file.size)
       const newPage = await pagesService.uploadPage(documentId, file)
+      console.log('[detail] uploaded, page id:', newPage.id)
       pages.value = [...pages.value, newPage]
     }
     if (document.value) {
@@ -147,6 +156,7 @@ async function onCaptureClick() {
       position: 'top',
     })
   } catch (err) {
+    console.error('[detail] upload failed:', err)
     $q.notify({
       type: 'negative',
       message: err.response?.data?.detail || 'Failed to upload page',
@@ -190,24 +200,74 @@ async function onDownloadPdf() {
   generatingPdf.value = true
   try {
     const blob = await documentsService.fetchDocumentPdfBlob(documentId)
-    const url = URL.createObjectURL(blob)
     const safeName = (document.value?.title || 'document').replace(/[^\w\s-]/g, '_').slice(0, 80)
-    const link = window.document.createElement('a')
-    link.href = url
-    link.download = `${safeName}.pdf`
-    window.document.body.appendChild(link)
-    link.click()
-    window.document.body.removeChild(link)
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-    $q.notify({ type: 'positive', message: 'PDF ready', position: 'top' })
+    const filename = `${safeName}.pdf`
+
+    if (Capacitor.isNativePlatform()) {
+      await savePdfNative(blob, filename)
+    } else {
+      saveOnWeb(blob, filename)
+    }
+
+    $q.notify({ type: 'positive', message: 'PDF saved', position: 'top' })
   } catch (err) {
+    console.error('[pdf] failed:', err)
     $q.notify({
       type: 'negative',
-      message: err.response?.data?.detail || 'Failed to generate PDF',
+      message: err.response?.data?.detail || err.message || 'Failed to generate PDF',
       position: 'top',
     })
   } finally {
     generatingPdf.value = false
   }
 }
+
+function saveOnWeb(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const link = window.document.createElement('a')
+  link.href = url
+  link.download = filename
+  window.document.body.appendChild(link)
+  link.click()
+  window.document.body.removeChild(link)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+async function savePdfNative(blob, filename) {
+  const [{ Filesystem, Directory }, { FileOpener }] = await Promise.all([
+    import('@capacitor/filesystem'),
+    import('@capacitor-community/file-opener'),
+  ])
+
+  const base64 = await blobToBase64(blob)
+  const writeResult = await Filesystem.writeFile({
+    path: filename,
+    data: base64,
+    directory: Directory.Documents,
+    recursive: true,
+  })
+
+  try {
+    await FileOpener.open({
+      filePath: writeResult.uri,
+      contentType: 'application/pdf',
+    })
+  } catch (err) {
+    console.warn('[pdf] open failed, file is saved at', writeResult.uri, err)
+  }
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      const result = reader.result
+      const commaIndex = result.indexOf(',')
+      resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result)
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+}
+
 </script>
