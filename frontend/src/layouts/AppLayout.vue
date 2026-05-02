@@ -2,7 +2,23 @@
   <q-layout view="lHh Lpr lFf">
     <q-header elevated>
       <q-toolbar>
-        <q-toolbar-title>Scanner</q-toolbar-title>
+        <q-toolbar-title>
+          <router-link
+            :to="{ name: 'documents' }"
+            class="text-white text-decoration-none"
+            style="text-decoration: none; color: inherit;"
+          >
+            Scanner
+          </router-link>
+        </q-toolbar-title>
+        <q-btn
+          flat
+          round
+          dense
+          icon="search"
+          :to="{ name: 'search' }"
+          aria-label="Search"
+        />
         <q-btn-dropdown flat :label="auth.user?.email || 'Account'">
           <q-list>
             <q-item clickable v-close-popup @click="onLogout">

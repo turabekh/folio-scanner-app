@@ -10,6 +10,11 @@ const routes = [
         component: () => import('pages/DocumentsPage.vue'),
       },
       {
+        path: 'search',
+        name: 'search',
+        component: () => import('pages/SearchPage.vue'),
+      },
+      {
         path: 'documents/:id',
         name: 'document-detail',
         component: () => import('pages/DocumentDetailPage.vue'),

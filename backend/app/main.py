@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.routers import auth, documents
+from app.routers import auth, documents, search
 from app.services.storage import check_bucket
 
 app = FastAPI(title=settings.app_name)
@@ -27,6 +27,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(documents.router)
+app.include_router(search.router)
 
 
 @app.get("/health")
