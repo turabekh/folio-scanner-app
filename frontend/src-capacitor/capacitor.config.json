@@ -7,5 +7,23 @@
     "url": "http://192.168.1.104:9000",
     "cleartext": true,
     "androidScheme": "https"
+  },
+  "android": {
+    "webContentsDebuggingEnabled": true,
+    "allowMixedContent": true,
+    "captureInput": true,
+    "loggingBehavior": "production"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "launchAutoHide": true,
+      "backgroundColor": "#ffffff",
+      "androidSplashResourceName": "splash",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false,
+      "splashFullScreen": false,
+      "splashImmersive": false
+    }
   }
 }
