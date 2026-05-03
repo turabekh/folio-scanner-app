@@ -31,14 +31,7 @@ app.add_middleware(RequestContextMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://app.localhost",
-        "http://localhost:9000",
-        "http://192.168.1.104:9000",
-        "http://192.168.1.104:8000",
-        "capacitor://localhost",
-        "http://localhost",
-    ],
+    allow_origins=[origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

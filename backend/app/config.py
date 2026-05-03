@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     rate_limit_register: str = "5/hour"
     rate_limit_login: str = "20/minute"
+    cors_origins: str = "https://app.localhost,http://localhost:9000,capacitor://localhost"
 
 
 settings = Settings()

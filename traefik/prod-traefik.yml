@@ -20,7 +20,7 @@ providers:
 certificatesResolvers:
   letsencrypt:
     acme:
-      email: ${ACME_EMAIL}
+      email: turabekbucket@gmail.com
       storage: /letsencrypt/acme.json
       httpChallenge:
         entryPoint: web
