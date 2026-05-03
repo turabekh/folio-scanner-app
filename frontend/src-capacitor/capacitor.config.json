@@ -1,5 +1,5 @@
 {
-  "appId": "com.scanner.app",
+  "appId": "org.foliodocs.folio",
   "appName": "Folio",
   "webDir": "../dist/spa",
   "bundledWebRuntime": false,
