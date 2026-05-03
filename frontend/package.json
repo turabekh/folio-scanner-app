@@ -22,6 +22,7 @@
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/share": "^8.0.1",
+    "@capacitor/splash-screen": "^8.0.1",
     "@pantrist/capacitor-plugin-ml-kit-text-recognition": "^8.0.0",
     "@quasar/extras": "^1.16.4",
     "axios": "^1.15.2",
@@ -34,6 +35,7 @@
     "vue-router": "^5.0.3"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@eslint/js": "^9.39.4",
     "@intlify/unplugin-vue-i18n": "^11.0.0",
     "@quasar/app-vite": "^2.5.1",
